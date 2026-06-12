@@ -1,0 +1,32 @@
+{
+  "name": "women-safety-app",
+  "version": "1.0.0",
+  "description": "Women Safety Emergency Alert Web Application",
+  "main": "index.js",
+  "scripts": {
+    "install-backend": "npm install --prefix backend",
+    "install-frontend": "npm install --prefix frontend",
+    "install-all": "npm install && npm run install-backend && npm run install-frontend",
+    "server": "npm run dev --prefix backend",
+    "client": "npm run dev --prefix frontend",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "build-frontend": "npm run build --prefix frontend"
+  },
+  "keywords": [
+    "safety",
+    "emergency",
+    "sos",
+    "react",
+    "node",
+    "express",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "nodemailer": "^8.0.10"
+  }
+}

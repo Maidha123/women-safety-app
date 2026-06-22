@@ -1,0 +1,280 @@
+# Aegis Women Safety Emergency Alert Application
+## Project Architecture & UML Diagrams Document
+
+This document provides a comprehensive technical analysis of the **Aegis Women Safety Emergency Alert System**. Aegis is a MERN-stack web application designed to empower users in danger by instantly dispatching real-time SOS alerts, broadcasting live GPS coordinates, and capturing local media evidence to support emergency services and notify trusted contacts.
+
+---
+
+## 1. System Architecture Overview
+
+Aegis is constructed using a decoupled, client-server pattern optimized for high availability, secure credentials storage, and rapid response delivery:
+
+- **Frontend Client**: A React 18 single-page application bundled with Vite. It features a responsive dashboard, interactive maps (Google Maps with fallback simulation), and media recording APIs (`MediaRecorder` API) to capture live evidence. State management is facilitated through standard React contexts (`AuthContext`).
+- **Backend API Gateway**: A RESTful Express server running on Node.js. It manages API routing, authorization filters, local file uploading via `multer`, and custom asynchronous operations.
+- **Notification Services**: Integrated channels utilizing Twilio (for real-time SMS broadcasts) and Nodemailer SMTP (for priority emails).
+- **Persistent Database**: A MongoDB cluster accessed using the Mongoose ODM to model structured relationships between Users, Emergency Contacts, and Emergency Incidents.
+
+### System Components Diagram
+```mermaid
+graph TB
+  subgraph Frontend_Client ["Vite React Client"]
+    UI["Pages (Dashboard, MapView, Contacts, Login)"]
+    Context["AuthContext (JWT & User State)"]
+    Axios["Axios REST Client"]
+    Media["Browser Geolocation & MediaRecorder API"]
+  end
+
+  subgraph API_Gateway ["Express Node.js Server"]
+    Router["Express Router (auth, contact, incident)"]
+    Middleware["authMiddleware (protect)"]
+    Controllers["Controllers (auth, contact, incident)"]
+    Multer["Multer Storage Engine (media files)"]
+  end
+
+  subgraph Notification_Engines ["Alert Dispatch Service"]
+    Notifier["utils/notifier.js (sendSOSTriggerAlerts)"]
+    Twilio["Twilio SMS API"]
+    SMTP["Nodemailer (SMTP Server)"]
+  end
+
+  subgraph Database_Layer ["Storage Layer"]
+    Mongoose["Mongoose ODM Models"]
+    MongoDB[("MongoDB Database")]
+  end
+
+  UI --> Context
+  UI --> Axios
+  UI --> Media
+  Axios -- "HTTP REST Requests" --> Router
+  Router --> Middleware
+  Middleware --> Controllers
+  Controllers --> Mongoose
+  Controllers --> Multer
+  Controllers --> Notifier
+  Notifier --> Twilio
+  Notifier --> SMTP
+  Mongoose --> MongoDB
+```
+
+---
+
+## 2. Entity Relationship Diagram (ERD)
+
+The database schema enforces one-to-many relationships where both **Emergency Contacts** and **Incident Logs** are linked to a single registered **User**.
+
+```mermaid
+erDiagram
+  USER {
+    ObjectId _id PK
+    string name
+    string email UK
+    string password
+    string phone
+    date createdAt
+    date updatedAt
+  }
+
+  CONTACT {
+    ObjectId _id PK
+    ObjectId user FK
+    string name
+    string phone
+    string email
+    string relationship
+    date createdAt
+    date updatedAt
+  }
+
+  INCIDENT {
+    ObjectId _id PK
+    ObjectId user FK
+    object location "latitude, longitude, address"
+    array evidence "fileUrl, fileType, createdAt"
+    array locationHistory "latitude, longitude, timestamp"
+    string status "active / resolved"
+    date resolvedAt
+    date createdAt
+    date updatedAt
+  }
+
+  USER ||--o{ CONTACT : "registers"
+  USER ||--o{ INCIDENT : "triggers"
+```
+
+---
+
+## 3. Core Workflows & UML Sequence Diagrams
+
+### SOS Trigger and Notification Sequence
+The most critical workflow in Aegis is the activation of the SOS system. The client gathers GPS coordinates, contacts the Express API, writes the incident log, and alerts the emergency network simultaneously before recording ambient evidence.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as User in Danger
+  participant App as React Dashboard
+  participant GPS as Geolocation API
+  participant Server as Express Server
+  participant DB as MongoDB
+  participant Notify as Notifier Service
+  participant Gateway as Twilio & SMTP
+
+  User->>App: Clicks "SOS" Button
+  activate App
+  App->>GPS: Request Current Coordinates
+  alt GPS Available
+    GPS-->>App: Latitude & Longitude Coordinates
+  else GPS Fails / Timeout
+    App->>App: Query Fallback IP Geolocation Service
+  end
+  App->>Server: POST /api/incidents/sos {lat, lng} (With JWT Token)
+  activate Server
+  Server->>Server: Verify JWT Token (protect Middleware)
+  Server->>DB: Create Incident Log (status: 'active')
+  activate DB
+  DB-->>Server: Incident Created (_id, timestamps)
+  deactivate DB
+
+  Server->>DB: Find contacts where user == user.id
+  activate DB
+  DB-->>Server: Contacts List [name, phone, email]
+  deactivate DB
+
+  Server->>Notify: sendSOSTriggerAlerts(user, location, contacts)
+  activate Notify
+  
+  par Send SMS
+    Notify->>Gateway: Trigger Twilio SMS to Contacts
+  and Send Email
+    Notify->>Gateway: Trigger Nodemailer SMTP to Contacts
+  end
+  
+  Notify-->>Server: Dispatch Initiated
+  deactivate Notify
+  
+  Server-->>App: 201 Created & SOS Confirmation
+  deactivate Server
+
+  App->>App: Change Dashboard state to "Emergency Active"
+  App->>App: Start MediaRecorder API (Record local audio evidence)
+  
+  Note over App: Recording continues for 10 seconds...
+  
+  App->>App: Stop MediaRecorder -> Create Audio Blob
+  App->>Server: POST /api/incidents/:id/evidence (FormData multipart)
+  activate Server
+  Server->>Server: Save WebM file to backend/uploads
+  Server->>DB: Add evidence metadata link to Incident Document
+  DB-->>Server: Updated Document
+  Server-->>App: 200 Evidence Upload Success
+  deactivate Server
+  deactivate App
+```
+
+---
+
+## 4. Live Location History & Resolution Flow
+
+During an active SOS emergency, the client page periodically streams coordinate checkpoints to ensure rescuers can track movement. The session is closed when the user marks the emergency as resolved.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant App as React App (Dashboard)
+  participant Server as Express Server
+  participant DB as MongoDB
+
+  loop Periodic Sync (While SOS is Active)
+    App->>App: Fetch Current GPS Location
+    App->>Server: PUT /api/incidents/:id/location {lat, lng}
+    activate Server
+    Server->>DB: Push coordinates to Incident.locationHistory & update Incident.location
+    DB-->>Server: Updated Incident
+    Server-->>App: 200 Success Response
+    deactivate Server
+  end
+
+  User->>App: Clicks "Stop / Resolve SOS"
+  activate App
+  App->>Server: PUT /api/incidents/:id/resolve
+  activate Server
+  Server->>DB: Set Incident.status = 'resolved' & record Incident.resolvedAt
+  DB-->>Server: Updated Incident
+  Server-->>App: 200 Resolution Response
+  deactivate Server
+  App->>App: Reset State to "System Active" (Safe Mode)
+  deactivate App
+```
+
+---
+
+## 5. API Endpoint Architecture
+
+All endpoints (except login/registration and safety map data) are secured using JWT validation inside `authMiddleware.js`.
+
+| Module | Method | Endpoint | Auth | Request Payload | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Auth** | `POST` | `/api/auth/register` | Public | `{name, email, password, phone}` | Registers a new account, hashes password, returns JWT. |
+| **Auth** | `POST` | `/api/auth/login` | Public | `{email, password}` | Verifies credentials, generates JWT. |
+| **Auth** | `GET` | `/api/auth/profile` | Private | *None* | Retrieves profile details for current logged-in user. |
+| **Contacts** | `GET` | `/api/contacts` | Private | *None* | Fetches the list of trusted emergency contacts for the user. |
+| **Contacts** | `POST` | `/api/contacts` | Private | `{name, phone, email, relationship}` | Registers a new emergency contact. |
+| **Contacts** | `PUT` | `/api/contacts/:id` | Private | `{name, phone, email, relationship}` | Updates details of a specific emergency contact. |
+| **Contacts** | `DELETE`| `/api/contacts/:id` | Private | *None* | Removes a contact from the user's list. |
+| **Incidents**| `POST` | `/api/incidents/sos` | Private | `{latitude, longitude, address}` | Triggers SOS alert, writes incident, launches SMS/Email alerts. |
+| **Incidents**| `PUT` | `/api/incidents/:id/location` | Private | `{latitude, longitude}` | Appends coordinate history to trace live route progression. |
+| **Incidents**| `POST` | `/api/incidents/:id/evidence`| Private | `multipart/form-data` (file: `evidence`) | Receives audio/video recording files, stores locally. |
+| **Incidents**| `PUT` | `/api/incidents/:id/resolve` | Private | *None* | Sets incident status to resolved and saves completion timestamp. |
+| **Incidents**| `POST` | `/api/incidents/check-safety` | Private | `{latitude, longitude, radiusKm}` | Evaluates local risk index based on historical incident density. |
+| **Incidents**| `GET` | `/api/incidents/danger-zones` | Public | *None* | Lists coordinates of all historical incidents for map overlays. |
+| **Incidents**| `GET` | `/api/incidents/history` | Private | *None* | Fetches the past SOS activations triggered by the current user. |
+
+---
+
+## 6. Directory Structure Mapping
+
+Below is the directory map illustrating how Aegis code files are structured:
+
+```text
+women-safety-app/
+├── backend/
+│   ├── config/              # DB connections & environment config files
+│   ├── controllers/         # Handler logic linking routes to Mongoose DB
+│   │   ├── authController.js
+│   │   ├── contactController.js
+│   │   └── incidentController.js
+│   ├── middleware/          # Express route protection & error logging
+│   │   ├── authMiddleware.js
+│   │   └── errorMiddleware.js
+│   ├── models/              # Mongoose DB schema definitions
+│   │   ├── Contact.js
+│   │   ├── Incident.js
+│   │   └── User.js
+│   ├── routes/              # Express API route endpoints definitions
+│   │   ├── authRoutes.js
+│   │   ├── contactRoutes.js
+│   │   └── incidentRoutes.js
+│   ├── uploads/             # Destination folder for media evidence uploads
+│   ├── utils/               # SMTP email & Twilio SMS notifier engines
+│   │   └── notifier.js
+│   ├── .env                 # Database credentials & API secrets
+│   └── server.js            # Node/Express application initialization
+│
+└── frontend/
+    ├── src/
+    │   ├── components/      # Common elements (Navigation, Page wrapper UI)
+    │   │   └── Common/
+    │   │       └── Layout.jsx
+    │   ├── context/         # Central auth session store
+    │   │   └── AuthContext.jsx
+    │   ├── pages/           # Application views
+    │   │   ├── Contacts.jsx # Emergency contacts management page
+    │   │   ├── Dashboard.jsx# Central SOS button, evidence, & logs
+    │   │   ├── Login.jsx    # User Authentication Sign-In
+    │   │   ├── MapView.jsx  # Danger Zones analysis dashboard
+    │   │   └── Register.jsx # User Sign-Up
+    │   ├── App.jsx          # Route handlers & PrivateRoute component
+    │   ├── main.jsx         # App mounting file
+    │   └── index.css        # Stylesheet configurations
+    └── vite.config.js       # Vite bundler, proxy configs, and plugins
+```

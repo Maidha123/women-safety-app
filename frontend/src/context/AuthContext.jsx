@@ -1,6 +1,9 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 
+// 🌐 Isko humne bilkul khali (simple) kar diya hai kyunki Vercel khud handles karega ab path
+const API_BASE_URL = '';
+
 const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
@@ -17,7 +20,6 @@ export const AuthProvider = ({ children }) => {
       if (storedUser && storedToken) {
         try {
           setUser(JSON.parse(storedUser));
-          // Set default authorization header
           axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
         } catch (e) {
           localStorage.removeItem('user');

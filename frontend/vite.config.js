@@ -9,7 +9,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://women-safety-app-gx14.onrender.com',
         changeOrigin: true,
         secure: false,
       },

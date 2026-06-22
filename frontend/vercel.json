@@ -2,7 +2,11 @@
     "rewrites": [
         {
             "source": "/api/:path*",
-            "destination": "https://maidha-women-safety-app.hf.space/api/:path*"
+            "destination": "https://women-safety-app-gx14.onrender.com/api/:path*"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
         }
     ]
 }

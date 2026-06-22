@@ -1,8 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 
-// 🌐 Isko humne bilkul khali (simple) kar diya hai kyunki Vercel khud handles karega ab path
-const API_BASE_URL = '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const AuthContext = createContext();
 
@@ -35,7 +34,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (name, email, password, phone) => {
     setLoading(true);
     try {
-      const res = await axios.post('/api/auth/register', { name, email, password, phone });
+      const res = await axios.post(`${API_BASE_URL}/api/auth/register`, { name, email, password, phone });
       const { data } = res.data;
 
       localStorage.setItem('token', data.token);
@@ -67,7 +66,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const res = await axios.post('/api/auth/login', { email, password });
+      const res = await axios.post(`${API_BASE_URL}/api/auth/login`, { email, password });
       const { data } = res.data;
 
       localStorage.setItem('token', data.token);
